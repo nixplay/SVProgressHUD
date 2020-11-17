@@ -40,10 +40,13 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 @property (nonatomic, strong) UIView *backgroundView;
 @property (nonatomic, strong) SVRadialGradientLayer *backgroundRadialGradientLayer;
 @property (nonatomic, strong) UIVisualEffectView *hudView;
-@property (nonatomic, strong) UIBlurEffect *hudViewCustomBlurEffect;
+@property (nonatomic, strong) UIVisualEffectView *controlViewEffect;
 @property (nonatomic, strong) UILabel *statusLabel;
+@property (nonatomic, strong) UILabel *cancelLabel;
 @property (nonatomic, strong) UIImageView *imageView;
 
+@property (nonatomic, strong) UIButton *cancelButton;
+@property (nonatomic, strong) UIView *lineSeparator;
 @property (nonatomic, strong) UIView *indefiniteAnimatedView;
 @property (nonatomic, strong) SVProgressAnimatedView *ringView;
 @property (nonatomic, strong) SVProgressAnimatedView *backgroundRingView;
@@ -53,6 +56,9 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 
 @property (nonatomic, readonly) CGFloat visibleKeyboardHeight;
 @property (nonatomic, readonly) UIWindow *frontWindow;
+
+@property (nonatomic, assign) SEL cancelSelector;
+@property (nonatomic, assign) id sourceDelegate;
 
 #if TARGET_OS_IOS && __IPHONE_OS_VERSION_MAX_ALLOWED >= 100000
 @property (nonatomic, strong) UINotificationFeedbackGenerator *hapticGenerator NS_AVAILABLE_IOS(10_0);
@@ -125,6 +131,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 
 + (void)setBorderWidth:(CGFloat)width {
     [self sharedView].hudView.layer.borderWidth = width;
+    [self sharedView].controlViewEffect.layer.borderWidth = width;
 }
 
 + (void)setFont:(UIFont*)font {
@@ -136,18 +143,8 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     [self setDefaultStyle:SVProgressHUDStyleCustom];
 }
 
-+ (void)setForegroundImageColor:(UIColor *)color {
-    [self sharedView].foregroundImageColor = color;
-    [self setDefaultStyle:SVProgressHUDStyleCustom];
-}
-
 + (void)setBackgroundColor:(UIColor*)color {
     [self sharedView].backgroundColor = color;
-    [self setDefaultStyle:SVProgressHUDStyleCustom];
-}
-
-+ (void)setHudViewCustomBlurEffect:(UIBlurEffect*)blurEffect {
-    [self sharedView].hudViewCustomBlurEffect = blurEffect;
     [self setDefaultStyle:SVProgressHUDStyleCustom];
 }
 
@@ -207,8 +204,13 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     [self sharedView].hapticsEnabled = hapticsEnabled;
 }
 
-+ (void)setMotionEffectEnabled:(BOOL)motionEffectEnabled {
-    [self sharedView].motionEffectEnabled = motionEffectEnabled;
+#pragma mark - CallBack Methods
++ (void)cancelMethod:(SEL)selector {
+    [[self sharedView] setCancelSelector:selector];
+}
+
++ (void)sourceDelegate:(id)sourceDelegate {
+    [[self sharedView] setSourceDelegate:sourceDelegate];
 }
 
 #pragma mark - Show Methods
@@ -398,6 +400,8 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         self.imageView.alpha = 0.0f;
         self.statusLabel.alpha = 0.0f;
         self.indefiniteAnimatedView.alpha = 0.0f;
+        self.lineSeparator.alpha = 0.0f;
+        self.cancelButton.alpha = 0.0f;
         self.ringView.alpha = self.backgroundRingView.alpha = 0.0f;
         
 
@@ -410,7 +414,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         _defaultStyle = SVProgressHUDStyleLight;
         _defaultAnimationType = SVProgressHUDAnimationTypeFlat;
         _minimumSize = CGSizeZero;
-        _font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
+        _font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
         
         _imageViewSize = CGSizeMake(28.0f, 28.0f);
         _shouldTintImages = YES;
@@ -439,7 +443,6 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         _maxSupportedWindowLevel = UIWindowLevelNormal;
         
         _hapticsEnabled = NO;
-        _motionEffectEnabled = YES;
         
         // Accessibility support
         self.accessibilityIdentifier = @"SVProgressHUD";
@@ -469,7 +472,6 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         labelHeight = ceilf(CGRectGetHeight(labelRect));
         labelWidth = ceilf(CGRectGetWidth(labelRect));
     }
-    
     // Calculate hud size based on content
     // For the beginning use default values, these
     // might get update if string is too large etc.
@@ -495,7 +497,8 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     }
     
     // Update values on subviews
-    self.hudView.bounds = CGRectMake(0.0f, 0.0f, MAX(self.minimumSize.width, hudWidth), MAX(self.minimumSize.height, hudHeight));
+    self.hudView.bounds = CGRectMake(0.0f, 0.0f, 320.0f, 180);
+    self.controlViewEffect.bounds = [UIScreen mainScreen].bounds;
     
     // Animate value update
     [CATransaction begin];
@@ -511,7 +514,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     }
     self.indefiniteAnimatedView.center = CGPointMake(CGRectGetMidX(self.hudView.bounds), centerY);
     if(self.progress != SVProgressHUDUndefinedProgress) {
-        self.backgroundRingView.center = self.ringView.center = CGPointMake(CGRectGetMidX(self.hudView.bounds), centerY);
+        self.backgroundRingView.center = self.ringView.center = CGPointMake(0, centerY);
     }
     self.imageView.center = CGPointMake(CGRectGetMidX(self.hudView.bounds), centerY);
 
@@ -522,8 +525,12 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         centerY = CGRectGetMidY(self.hudView.bounds);
     }
     self.statusLabel.frame = labelRect;
-    self.statusLabel.center = CGPointMake(CGRectGetMidX(self.hudView.bounds), centerY);
-    
+    self.statusLabel.center = CGPointMake(CGRectGetMidX(self.hudView.bounds), 50.0f);
+
+    self.cancelLabel.text = @"Cancel";
+    self.cancelLabel.frame = labelRect;
+    self.cancelLabel.center = CGPointMake(CGRectGetMidX(self.hudView.bounds), 150.0f);
+
     [CATransaction commit];
 }
 
@@ -550,6 +557,9 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     // Clear old motion effect, then add new motion effects
     self.hudView.motionEffects = @[];
     [self.hudView addMotionEffect:effectGroup];
+
+    self.controlViewEffect.motionEffects = @[];
+    [self.controlViewEffect addMotionEffect:effectGroup];
 }
 
 - (void)updateViewHierarchy {
@@ -694,14 +704,12 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     CGRect statusBarFrame = CGRectZero;
 #endif
     
-    if (_motionEffectEnabled) {
 #if TARGET_OS_IOS
-        // Update the motion effects in regard to orientation
-        [self updateMotionEffectForOrientation:orientation];
+    // Update the motion effects in regard to orientation
+    [self updateMotionEffectForOrientation:orientation];
 #else
-        [self updateMotionEffectForXMotionEffectType:UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis yMotionEffectType:UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis];
+    [self updateMotionEffectForXMotionEffectType:UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis yMotionEffectType:UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis];
 #endif
-    }
     
     // Calculate available height for display
     CGFloat activeHeight = CGRectGetHeight(orientationFrame);
@@ -732,10 +740,16 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 
 - (void)moveToPoint:(CGPoint)newCenter rotateAngle:(CGFloat)angle {
     self.hudView.transform = CGAffineTransformMakeRotation(angle);
+    self.controlViewEffect.transform = CGAffineTransformMakeRotation(angle);
     if (self.containerView) {
         self.hudView.center = CGPointMake(self.containerView.center.x + self.offsetFromCenter.horizontal, self.containerView.center.y + self.offsetFromCenter.vertical);
+        self.controlViewEffect.center = CGPointMake(self.containerView.center.x + self.offsetFromCenter.horizontal, self.containerView.center.y + self.offsetFromCenter.vertical);
+        self.cancelButton.center = CGPointMake(self.containerView.center.x + self.offsetFromCenter.horizontal, self.containerView.center.y + self.offsetFromCenter.vertical + 56);
     } else {
         self.hudView.center = CGPointMake(newCenter.x + self.offsetFromCenter.horizontal, newCenter.y + self.offsetFromCenter.vertical);
+        self.controlViewEffect.center = CGPointMake(newCenter.x + self.offsetFromCenter.horizontal, newCenter.y + self.offsetFromCenter.vertical);
+        self.cancelButton.center = CGPointMake(newCenter.x + self.offsetFromCenter.horizontal, newCenter.y + self.offsetFromCenter.vertical + 56);
+
     }
 }
 
@@ -797,11 +811,13 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
                 if(!strongSelf.backgroundRingView.superview){
                     [strongSelf.hudView.contentView addSubview:strongSelf.backgroundRingView];
                 }
-                
+
+                [strongSelf.cancelButton addTarget:strongSelf.sourceDelegate action:strongSelf.cancelSelector forControlEvents:UIControlEventTouchUpInside];
+
                 // Set progress animated
                 [CATransaction begin];
                 [CATransaction setDisableActions:YES];
-                strongSelf.ringView.strokeEnd = progress;
+                strongSelf.ringView.strokeEnd = progress / 2;
                 [CATransaction commit];
                 
                 // Update the activity count
@@ -862,7 +878,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
                 if (image.renderingMode != UIImageRenderingModeAlwaysTemplate) {
                     strongSelf.imageView.image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
                 }
-                strongSelf.imageView.tintColor = strongSelf.foregroundImageColorForStyle;
+                strongSelf.imageView.tintColor = strongSelf.foregroundColorForStyle;;
             } else {
                 strongSelf.imageView.image = image;
             }
@@ -890,18 +906,14 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     [self positionHUD:nil];
     
     // Update accessibility as well as user interaction
-    // \n cause to read text twice so remove "\n" new line character before setting up accessiblity label
-    NSString *accessibilityString = [[self.statusLabel.text componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" "];
     if(self.defaultMaskType != SVProgressHUDMaskTypeNone) {
         self.controlView.userInteractionEnabled = YES;
-        self.accessibilityLabel =  accessibilityString ?: NSLocalizedString(@"Loading", nil);
+        self.accessibilityLabel = self.statusLabel.text ?: NSLocalizedString(@"Loading", nil);
         self.isAccessibilityElement = YES;
-        self.controlView.accessibilityViewIsModal = YES;
     } else {
         self.controlView.userInteractionEnabled = NO;
-        self.hudView.accessibilityLabel = accessibilityString ?: NSLocalizedString(@"Loading", nil);
+        self.hudView.accessibilityLabel = self.statusLabel.text ?: NSLocalizedString(@"Loading", nil);
         self.hudView.isAccessibilityElement = YES;
-        self.controlView.accessibilityViewIsModal = NO;
     }
     
     // Get duration
@@ -914,12 +926,15 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
                                                             object:self
                                                           userInfo:[self notificationUserInfo]];
         
-        // Zoom HUD a little to to make a nice appear / pop up animation
-        self.hudView.transform = self.hudView.transform = CGAffineTransformScale(self.hudView.transform, 1.3f, 1.3f);
-        
+        // Shrink HUD to to make a nice appear / pop up animation
+        self.hudView.transform = self.hudView.transform = CGAffineTransformScale(self.hudView.transform, 1/1.5f, 1/1.5f);
+
+        self.controlViewEffect.transform = self.controlViewEffect.transform = CGAffineTransformScale(self.controlViewEffect.transform, 1/1.5f, 1/1.5f);
+
         __block void (^animationsBlock)(void) = ^{
             // Zoom HUD a little to make a nice appear / pop up animation
             self.hudView.transform = CGAffineTransformIdentity;
+            self.controlViewEffect.transform = CGAffineTransformIdentity;
             
             // Fade in all effects (colors, blur, etc.)
             [self fadeInEffects];
@@ -991,6 +1006,8 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     [[NSOperationQueue mainQueue] addOperationWithBlock:^{
         __strong SVProgressHUD *strongSelf = weakSelf;
         if(strongSelf){
+            // Stop timer
+            strongSelf.graceTimer = nil;
             
             // Post notification to inform user
             [[NSNotificationCenter defaultCenter] postNotificationName:SVProgressHUDWillDisappearNotification
@@ -1051,10 +1068,6 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
             
             dispatch_time_t dipatchTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC));
             dispatch_after(dipatchTime, dispatch_get_main_queue(), ^{
-                
-                // Stop timer
-                strongSelf.graceTimer = nil;
-                
                 if (strongSelf.fadeOutAnimationDuration > 0) {
                     // Animate appearance
                     [UIView animateWithDuration:strongSelf.fadeOutAnimationDuration
@@ -1095,7 +1108,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         
         // Update styling
         SVIndefiniteAnimatedView *indefiniteAnimatedView = (SVIndefiniteAnimatedView*)_indefiniteAnimatedView;
-        indefiniteAnimatedView.strokeColor = self.foregroundImageColorForStyle;
+        indefiniteAnimatedView.strokeColor = self.foregroundColorForStyle;
         indefiniteAnimatedView.strokeThickness = self.ringThickness;
         indefiniteAnimatedView.radius = self.statusLabel.text ? self.ringRadius : self.ringNoTextRadius;
     } else {
@@ -1111,7 +1124,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         
         // Update styling
         UIActivityIndicatorView *activityIndicatorView = (UIActivityIndicatorView*)_indefiniteAnimatedView;
-        activityIndicatorView.color = self.foregroundImageColorForStyle;
+        activityIndicatorView.color = self.foregroundColorForStyle;
     }
     [_indefiniteAnimatedView sizeToFit];
     
@@ -1124,7 +1137,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     }
     
     // Update styling
-    _ringView.strokeColor = self.foregroundImageColorForStyle;
+    _ringView.strokeColor = UIColorFromRGB(0x4A90E2); // self.foregroundColorForStyle;
     _ringView.strokeThickness = self.ringThickness;
     _ringView.radius = self.statusLabel.text ? self.ringRadius : self.ringNoTextRadius;
     
@@ -1138,7 +1151,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     }
     
     // Update styling
-    _backgroundRingView.strokeColor = [self.foregroundImageColorForStyle colorWithAlphaComponent:0.1f];
+    _backgroundRingView.strokeColor = [self.foregroundColorForStyle colorWithAlphaComponent:0.1f];
     _backgroundRingView.strokeThickness = self.ringThickness;
     _backgroundRingView.radius = self.statusLabel.text ? self.ringRadius : self.ringNoTextRadius;
     
@@ -1151,6 +1164,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     [CATransaction setDisableActions:YES];
     
     [self.hudView.layer removeAllAnimations];
+    [self.controlViewEffect.layer removeAllAnimations];
     self.ringView.strokeEnd = 0.0f;
     
     [CATransaction commit];
@@ -1195,14 +1209,6 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     }
 }
 
-- (UIColor*)foregroundImageColorForStyle {
-    if (self.foregroundImageColor) {
-        return self.foregroundImageColor;
-    } else {
-        return [self foregroundColorForStyle];
-    }
-}
-
 - (UIColor*)backgroundColorForStyle {
     if(self.defaultStyle == SVProgressHUDStyleLight) {
         return [UIColor whiteColor];
@@ -1217,6 +1223,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     if(!_controlView) {
         _controlView = [UIControl new];
         _controlView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+#pragma mark MASK BG
         _controlView.backgroundColor = [UIColor clearColor];
         _controlView.userInteractionEnabled = YES;
         [_controlView addTarget:self action:@selector(controlViewDidReceiveTouchEvent:forEvent:) forControlEvents:UIControlEventTouchDown];
@@ -1240,6 +1247,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     }
     if(!_backgroundView.superview){
         [self insertSubview:_backgroundView belowSubview:self.hudView];
+        [self insertSubview:_backgroundView belowSubview:self.controlViewEffect];
     }
     
     // Update styling
@@ -1280,6 +1288,20 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     
     return _backgroundView;
 }
+
+- (UIVisualEffectView*)controlViewEffect {
+    if(!_controlViewEffect) {
+        _controlViewEffect = [UIVisualEffectView new];
+        _controlViewEffect.layer.masksToBounds = YES;
+        _controlViewEffect.autoresizingMask = UIViewAutoresizingFlexibleBottomMargin | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleLeftMargin;
+    }
+    if(!_controlViewEffect.superview) {
+        [self addSubview:_controlViewEffect];
+        [self sendSubviewToBack:_controlViewEffect];
+    }
+    return _controlViewEffect;
+}
+
 - (UIVisualEffectView*)hudView {
     if(!_hudView) {
         _hudView = [UIVisualEffectView new];
@@ -1294,6 +1316,34 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     _hudView.layer.cornerRadius = self.cornerRadius;
     
     return _hudView;
+}
+
+- (UIButton*)cancelButton {
+    if(!_cancelButton) {
+        _cancelButton = [[UIButton alloc] initWithFrame:CGRectMake(0.0f, 0.0f, 320, 46)];
+        _cancelButton.backgroundColor = [UIColor grayColor];
+        [_cancelButton setTitleColor:UIColorFromRGB(0x4A90E2) forState:UIControlStateNormal];
+        [_cancelButton setTitleColor:UIColorFromRGB(0x80C3F3) forState:UIControlStateHighlighted];
+        [_cancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
+        [_cancelButton setUserInteractionEnabled:YES];
+//        [_cancelButton addTarget:self action:@selector(onTapCancel:) forControlEvents:UIControlEventTouchUpInside];
+    }
+    if(!_cancelButton.superview) {
+      [self.controlView addSubview:_cancelButton];
+//      [self.controlView bringSubviewToFront:_cancelButton];
+    }
+    return _cancelButton;
+}
+
+- (UIView*)lineSeparator {
+    if(!_lineSeparator) {
+        _lineSeparator = [[UILabel alloc] initWithFrame:CGRectMake(0.0f, 120.0f, 320.0f, 0.5f)];
+        _lineSeparator.backgroundColor = UIColorFromRGB(0x7998A5);
+    }
+    if(!_lineSeparator.superview) {
+      [self.hudView.contentView addSubview:_lineSeparator];
+    }
+    return _lineSeparator;
 }
 
 - (UILabel*)statusLabel {
@@ -1316,6 +1366,24 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     return _statusLabel;
 }
 
+- (UILabel*)cancelLabel {
+    if(!_cancelLabel) {
+        _cancelLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _cancelLabel.backgroundColor = [UIColor clearColor];
+        _cancelLabel.adjustsFontSizeToFitWidth = YES;
+        _cancelLabel.textAlignment = NSTextAlignmentCenter;
+        _cancelLabel.baselineAdjustment = UIBaselineAdjustmentAlignCenters;
+        _cancelLabel.numberOfLines = 0;
+    }
+    if(!_cancelLabel.superview) {
+      [self.hudView.contentView addSubview:_cancelLabel];
+    }
+    // Update styling
+    _cancelLabel.textColor = UIColorFromRGB(0x479ADE);
+    _cancelLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+
+    return _cancelLabel;
+}
 - (UIImageView*)imageView {
     if(_imageView && !CGSizeEqualToSize(_imageView.bounds.size, _imageViewSize)) {
         [_imageView removeFromSuperview];
@@ -1390,23 +1458,33 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         // Add blur effect
         UIBlurEffectStyle blurEffectStyle = self.defaultStyle == SVProgressHUDStyleDark ? UIBlurEffectStyleDark : UIBlurEffectStyleLight;
         UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:blurEffectStyle];
-        self.hudView.effect = blurEffect;
         
         // We omit UIVibrancy effect and use a suitable background color as an alternative.
         // This will make everything more readable. See the following for details:
         // https://www.omnigroup.com/developer/how-to-make-text-in-a-uivisualeffectview-readable-on-any-background
+        self.controlViewEffect.effect = blurEffect;
+        self.controlViewEffect.backgroundColor = [self.backgroundColorForStyle colorWithAlphaComponent:0.60f];
+        self.controlViewEffect.alpha = 0.96f;
         
-        self.hudView.backgroundColor = [self.backgroundColorForStyle colorWithAlphaComponent:0.6f];
+        self.hudView.backgroundColor = [self.backgroundColorForStyle colorWithAlphaComponent:1.0f];
     } else {
-        self.hudView.effect = self.hudViewCustomBlurEffect;
         self.hudView.backgroundColor =  self.backgroundColorForStyle;
     }
 
+//    self.hudView.layer.shadowPath = [UIBezierPath bezierPathWithRect:self.hudView.bounds].CGPath;
+//    self.hudView.layer.shadowRadius = 5;
+//    self.hudView.layer.shadowOpacity = 1.0f;
+//    self.hudView.layer.shadowOffset = CGSizeZero;
+    self.hudView.layer.borderColor = UIColorFromRGB(0xDFE7EB).CGColor;
+    self.hudView.layer.borderWidth = 0.3f;
     // Fade in views
     self.backgroundView.alpha = 1.0f;
     
     self.imageView.alpha = 1.0f;
     self.statusLabel.alpha = 1.0f;
+    self.cancelLabel.alpha = 1.0f;
+    self.lineSeparator.alpha = 0.8f;
+    self.cancelButton.alpha = 1.0f;
     self.indefiniteAnimatedView.alpha = 1.0f;
     self.ringView.alpha = self.backgroundRingView.alpha = 1.0f;
 }
@@ -1416,16 +1494,21 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     if(self.defaultStyle != SVProgressHUDStyleCustom) {
         // Remove blur effect
         self.hudView.effect = nil;
+        self.controlViewEffect.effect = nil;
     }
 
     // Remove background color
     self.hudView.backgroundColor = [UIColor clearColor];
+    self.controlViewEffect.backgroundColor = [UIColor clearColor];
     
     // Fade out views
     self.backgroundView.alpha = 0.0f;
     
     self.imageView.alpha = 0.0f;
     self.statusLabel.alpha = 0.0f;
+    self.cancelLabel.alpha = 0.0f;
+    self.lineSeparator.alpha = 0.0f;
+    self.cancelButton.alpha = 0.0f;
     self.indefiniteAnimatedView.alpha = 0.0f;
     self.ringView.alpha = self.backgroundRingView.alpha = 0.0f;
 }
@@ -1489,10 +1572,6 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 
 - (void)setForegroundColor:(UIColor*)color {
     if (!_isInitializing) _foregroundColor = color;
-}
-
-- (void)setForegroundImageColor:(UIColor *)color {
-    if (!_isInitializing) _foregroundImageColor = color;
 }
 
 - (void)setBackgroundColor:(UIColor*)color {

@@ -27,25 +27,26 @@
 - (void)layoutAnimatedLayer {
     CALayer *layer = self.ringAnimatedLayer;
     [self.layer addSublayer:layer];
-    
-    CGFloat widthDiff = CGRectGetWidth(self.bounds) - CGRectGetWidth(layer.bounds);
-    CGFloat heightDiff = CGRectGetHeight(self.bounds) - CGRectGetHeight(layer.bounds);
-    layer.position = CGPointMake(CGRectGetWidth(self.bounds) - CGRectGetWidth(layer.bounds) / 2 - widthDiff / 2, CGRectGetHeight(self.bounds) - CGRectGetHeight(layer.bounds) / 2 - heightDiff / 2);
+
+//    CGFloat widthDiff = CGRectGetWidth(self.bounds) - CGRectGetWidth(layer.bounds);
+//    CGFloat heightDiff = CGRectGetHeight(self.bounds) - CGRectGetHeight(layer.bounds);
+//    layer.position = CGPointMake(CGRectGetWidth(self.bounds) - CGRectGetWidth(layer.bounds) / 2 - widthDiff / 2, CGRectGetHeight(self.bounds) - CGRectGetHeight(layer.bounds) / 2 - heightDiff / 2);
 }
 
 - (CAShapeLayer*)ringAnimatedLayer {
     if(!_ringAnimatedLayer) {
-        CGPoint arcCenter = CGPointMake(self.radius+self.strokeThickness/2+5, self.radius+self.strokeThickness/2+5);
-        UIBezierPath* smoothedPath = [UIBezierPath bezierPathWithArcCenter:arcCenter radius:self.radius startAngle:(CGFloat)-M_PI_2 endAngle:(CGFloat) (M_PI + M_PI_2) clockwise:YES];
-        
+//        CGPoint arcCenter = CGPointMake(self.radius+self.strokeThickness/2+5, self.radius+self.strokeThickness/2+5);
+//        UIBezierPath* smoothedPath = [UIBezierPath bezierPathWithArcCenter:arcCenter radius:self.radius startAngle:(CGFloat)-M_PI_2 endAngle:(CGFloat) (M_PI + M_PI_2) clockwise:YES];
+        UIBezierPath* smoothedPath = [UIBezierPath bezierPathWithRect:CGRectMake(10.0f, 25.0f, 280.0f, 0.5f)];
+
         _ringAnimatedLayer = [CAShapeLayer layer];
         _ringAnimatedLayer.contentsScale = [[UIScreen mainScreen] scale];
-        _ringAnimatedLayer.frame = CGRectMake(0.0f, 0.0f, arcCenter.x*2, arcCenter.y*2);
+        _ringAnimatedLayer.frame = CGRectMake(10.0f, 25.0f, 280, 0.5f);
         _ringAnimatedLayer.fillColor = [UIColor clearColor].CGColor;
         _ringAnimatedLayer.strokeColor = self.strokeColor.CGColor;
         _ringAnimatedLayer.lineWidth = self.strokeThickness;
-        _ringAnimatedLayer.lineCap = kCALineCapRound;
-        _ringAnimatedLayer.lineJoin = kCALineJoinBevel;
+//        _ringAnimatedLayer.lineCap = kCALineCapRound;
+//        _ringAnimatedLayer.lineJoin = kCALineJoinBevel;
         _ringAnimatedLayer.path = smoothedPath.CGPath;
     }
     return _ringAnimatedLayer;

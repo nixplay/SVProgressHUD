@@ -1,7 +1,14 @@
-//
-// Prefix header for all source files of the 'SVProgressHUD' target in the 'SVProgressHUD' project
-//
-
 #ifdef __OBJC__
-    #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+
+#define UIColorFromRGB(rgbValue) [UIColor colorWithRed:((float)((rgbValue & 0xFF0000) >> 16))/255.0 green:((float)((rgbValue & 0xFF00) >> 8))/255.0 blue:((float)(rgbValue & 0xFF))/255.0 alpha:1.0]
+
+#else
+#ifndef FOUNDATION_EXPORT
+#if defined(__cplusplus)
+#define FOUNDATION_EXPORT extern "C"
+#else
+#define FOUNDATION_EXPORT extern
+#endif
+#endif
 #endif
